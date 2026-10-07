@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <base target="_top">
+  <meta charset="UTF-8">
+  <meta name="enrollment-host" content="<?= embedOrigin ?>">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f2f5fa; color: #17243b; font: 16px/1.5 system-ui, sans-serif; }
+    main { max-width: 520px; margin: 32px auto; padding: 28px; background: white; border-radius: 16px; box-shadow: 0 8px 28px #17243b0c; }
+    h1 { font-size: 26px; line-height: 1.2; margin-top: 0; }
+    p { color: #536179; }
+    label { display: block; font-weight: 600; margin-top: 18px; }
+    input, select, button { width: 100%; padding: 12px; font: inherit; border-radius: 8px; }
+    input, select { margin-top: 6px; border: 1px solid #a7b3c5; background: white; color: inherit; }
+    button { margin-top: 24px; border: 0; background: #2358cf; color: white; font-weight: 600; cursor: pointer; }
+    button:disabled { opacity: .55; cursor: wait; }
+    :focus-visible { outline: 3px solid #93b5ff; outline-offset: 2px; }
+    #message { white-space: pre-wrap; }
+    #message.error { color: #a11c30; }
+    #message.success { color: #17633e; }
+    small { color: #536179; }
+    @media (max-width: 560px) { main { margin: 16px; padding: 22px; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Monthly student enrollment</h1>
+  <p>Request your physical class enrollment for the month you choose. Staff will review your request for LMS card activation.</p>
+  <form id="enrollment">
+    <fieldset id="fields" disabled style="border:0;padding:0;margin:0">
+      <label for="name">Student name</label>
+      <input id="name" name="name" required maxlength="120" autocomplete="name">
+      <label for="index">Student index</label>
+      <input id="index" name="index" required maxlength="50" autocapitalize="characters" spellcheck="false" aria-describedby="indexHelp">
+      <small id="indexHelp">Enter the index issued by your institute, including any leading zeros.</small>
+      <label for="batch">Student batch</label>
+      <select id="batch" name="batch" required><option value="">Select your batch</option></select>
+      <label for="center">Physical center</label>
+      <select id="center" name="center" required><option value="">Select your center</option></select>
+      <label for="month">Enrollment month and year</label>
+      <input id="month" name="month" type="month" required pattern="[1-9][0-9]{3}-(0[1-9]|1[0-2])" placeholder="YYYY-MM" aria-describedby="monthHelp">
+      <small id="monthHelp">Choose the month you want to enroll. For example, October 2026.</small>
+      <label for="image">Upload an image (optional)</label>
+      <input id="image" name="image" type="file" accept="image/jpeg,image/png,image/webp" aria-describedby="imageHelp">
+      <small id="imageHelp">One JPG, PNG or WebP image, up to 5 MB. Only authorized institute staff can view it.</small>
+      <button id="submit" type="submit">Submit enrollment request</button>
+    </fieldset>
+  </form>
+  <p id="message" role="status" aria-live="polite">Loading batches and centers…</p>
+</main>
+<script>
+  const form = document.getElementById('enrollment');
+  const fields = document.getElementById('fields');
+  const message = document.getElementById('message');
+  const button = document.getElementById('submit');
+  let submitting = false;
+  function show(text, kind) {
+    message.textContent = text;
+    message.className = kind || '';
+  }
+  function loadOptions() {
+    google.script.run.withSuccessHandler(options => {
+    for (const [id, values] of [['batch', options.batches], ['center', options.centers]]) {
+      values.forEach(value => document.getElementById(id).add(new Option(value, value)));
+    }
+    if (!options.batches.length || !options.centers.length) {
+      show('Enrollment is not available yet. Ask staff to add batches and physical centers.', 'error');
+      return;
+    }
+    fields.disabled = false;
+    show('');
+  }).withFailureHandler(() => {
+    show('Could not load the form. Reload the page or contact your institute.', 'error');
+  }).getOptions();
+  }
+  const hostOrigin = document.querySelector('meta[name="enrollment-host"]').content;
+  let hostConfirmed = !hostOrigin;
+  if (!hostOrigin) {
+    loadOptions();
+  } else {
+    show('Connecting to the enrollment website…');
+    function confirmHost(event) {
+      if (event.source !== window.top || event.origin !== hostOrigin || event.data?.type !== 'enrollment-host-confirmed') return;
+      hostConfirmed = true;
+      window.removeEventListener('message', confirmHost);
+      show('Loading batches and centers…');
+      loadOptions();
+    }
+    window.addEventListener('message', confirmHost);
+    window.top.postMessage({ type: 'enrollment-form-ready' }, hostOrigin);
+    setTimeout(() => {
+      if (!hostConfirmed) show('Please open this form from the official enrollment website or use its direct Google link.', 'error');
+    }, 12000);
+  }
+  form.addEventListener('submit', event => {
+    event.preventDefault();
+    if (submitting || !hostConfirmed) return;
+    if (!form.reportValidity()) return;
+    const image = document.getElementById('image').files[0];
+    if (image && (!['image/jpeg', 'image/png', 'image/webp'].includes(image.type) || !image.size || image.size > 5 * 1024 * 1024)) {
+      show('Choose a nonempty JPG, PNG or WebP image no larger than 5 MB.', 'error');
+      return;
+    }
+    submitting = true;
+    button.disabled = true;
+    button.textContent = 'Submitting…';
+    show('Saving your request…');
+    google.script.run.withSuccessHandler(result => {
+      form.reset();
+      submitting = false;
+      button.disabled = false;
+      button.textContent = 'Submit enrollment request';
+      show(result.message, 'success');
+    }).withFailureHandler(error => {
+      submitting = false;
+      button.disabled = false;
+      button.textContent = 'Submit enrollment request';
+      show(error.message || 'Unable to submit. Please try again.', 'error');
+    }).submitEnrollment(form);
+  });
+</script>
+</body>
+</html>

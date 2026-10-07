@@ -1,0 +1,46 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+}
+
+/* Dark theme only, tuned to the logo's blue. */
+:root {
+  --background: #060912;
+  --foreground: #e8eefc;
+  --popover: #0d1326;
+  --popover-foreground: #e8eefc;
+  --primary: #1d8cff;
+  --primary-foreground: #04101f;
+  --muted-foreground: #93a1c4;
+  --accent: #16233f;
+  --accent-foreground: #e8eefc;
+  --destructive: #ff5d6c;
+  --border: #1c2a4a;
+  --input: #22335c;
+  --ring: #3aa0ff;
+}
+
+body { margin: 0; background: var(--background); color: var(--foreground); font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
+
+/* StarBorder (React Bits) animation */
+@theme {
+  --animate-star-movement-bottom: star-movement-bottom linear infinite alternate;
+  --animate-star-movement-top: star-movement-top linear infinite alternate;
+  @keyframes star-movement-bottom { 0% { transform: translate(0%, 0%); opacity: 1; } 100% { transform: translate(-100%, 0%); opacity: 0; } }
+  @keyframes star-movement-top { 0% { transform: translate(0%, 0%); opacity: 1; } 100% { transform: translate(100%, 0%); opacity: 0; } }
+}
