@@ -130,6 +130,15 @@ function text_(value, label, maximum) {
   return result;
 }
 
+// "YYYY-MM" for this month and the two before it, in Sri Lanka time (same rule as src/months.js).
+function allowedMonths_() {
+  const parts = Utilities.formatDate(new Date(), 'Asia/Colombo', 'yyyy-M').split('-').map(Number);
+  return [0, 1, 2].map(back => {
+    const date = new Date(Date.UTC(parts[0], parts[1] - 1 - back, 1));
+    return date.getUTCFullYear() + '-' + ('0' + (date.getUTCMonth() + 1)).slice(-2);
+  });
+}
+
 function validate_(input, options) {
   if (!input || typeof input !== 'object') throw new Error('Please complete the form.');
   const data = {
@@ -139,11 +148,11 @@ function validate_(input, options) {
     center: text_(input.center, 'Physical center', 100),
     month: text_(input.month, 'Enrollment month', 7)
   };
-  if (!/^[A-Z0-9][A-Z0-9 /_-]*$/.test(data.index)) {
-    throw new Error('Student index can contain letters, numbers, spaces, /, _ and -.');
+  if (!/^\d{6}$/.test(data.index)) {
+    throw new Error('Enter a valid student index: exactly 6 digits.');
   }
-  if (!/^[1-9]\d{3}-(0[1-9]|1[0-2])$/.test(data.month)) {
-    throw new Error('Select a valid enrollment month and year.');
+  if (!allowedMonths_().includes(data.month)) {
+    throw new Error('Select a valid month: this month or one of the last 2 months.');
   }
   if (!options.batches.includes(data.batch) || !options.centers.includes(data.center)) {
     throw new Error('Batch or center is unavailable. Reload the form and select again.');
@@ -187,10 +196,15 @@ function submitEnrollment(input) {
     if (!sheet) throw new Error('The form is not configured. Contact your institute.');
     // ponytail: scan existing rows; use a database if enrollment volume makes this slow.
     const rows = sheet.getLastRow() < 2 ? [] :
-      sheet.getRange(2, 3, sheet.getLastRow() - 1, 4).getDisplayValues();
-    if (rows.some(row => row[0].trim().toUpperCase() === data.index && row[3] === data.month)) {
+      sheet.getRange(2, 2, sheet.getLastRow() - 1, 6).getDisplayValues(); // name, index, batch, center, month, status
+    if (rows.some(row => row[1].trim().toUpperCase() === data.index && row[4] === data.month)) {
       throw new Error('A request already exists for this student index and month. Contact staff for changes.');
     }
+    // An index is "verified" once staff marked any earlier request Completed/Activated.
+    const verified = rows.filter(row => row[1].trim() === data.index && ['Completed', 'Activated'].includes(row[5]));
+    const plain = value => value.toLowerCase().replace(/\s+/g, ' ').trim();
+    const studentStatus = !verified.length ? 'New student (not verified yet)'
+      : verified.some(row => plain(row[0]) === plain(data.name)) ? 'Verified student' : 'Verified student - name differs';
     if (sheet.getRange(1, 8).getDisplayValue() !== 'Uploaded image') {
       throw new Error('Staff must run the updated setup before accepting requests.');
     }
@@ -208,9 +222,25 @@ function submitEnrollment(input) {
       new Date(), cell_(data.name), data.index, cell_(data.batch), cell_(data.center), data.month, 'Pending', imageUrl
     ]]);
     sheet.getRange(next, 7).setDataValidation(statusRule_());
+    // Column K tells staff how much to trust the request. Never overwrite a column K that staff use for something else.
+    const statusHeader = sheet.getRange(1, 11).getDisplayValue();
+    if (!statusHeader) sheet.getRange(1, 11, 1, 1).setValues([['Student status']]);
+    if (!statusHeader || statusHeader === 'Student status') sheet.getRange(next, 11, 1, 1).setValues([[studentStatus]]);
     SpreadsheetApp.flush();
     return { message: 'Your enrollment request was saved for ' + data.month + '. Staff will review it and activate your LMS card.' };
   } finally {
     lock.releaseLock();
   }
+}
+
+// Run ONCE in the editor. Creates a live "Verified Students" tab listing every index that staff
+// marked Completed/Activated. It is a formula view: do not type into it.
+function installVerifiedStudents() {
+  const book = SpreadsheetApp.getActiveSpreadsheet();
+  const view = book.getSheetByName('Verified Students') || book.insertSheet('Verified Students');
+  view.clear();
+  view.getRange(1, 1).setValue('Verified students - built automatically from Enrollments rows marked Completed or Activated');
+  view.getRange(3, 1, 1, 3).setValues([['Student index', 'Student name', 'Batch']]);
+  view.getRange(4, 1).setFormula('=IFERROR(SORT(UNIQUE(FILTER({Enrollments!C2:C, Enrollments!B2:B, Enrollments!D2:D}, Enrollments!C2:C<>"", (Enrollments!G2:G="Completed")+(Enrollments!G2:G="Activated")>0)), 1, TRUE), "No verified students yet")');
+  view.setFrozenRows(3);
 }

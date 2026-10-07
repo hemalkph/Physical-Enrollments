@@ -1,3 +1,5 @@
+import { allowedMonths } from '../src/months.js';
+
 const MAX_BODY = 3_600_000;
 const TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const reply = (body, status = 200) => Response.json(body, {
@@ -55,6 +57,8 @@ export async function POST(request) {
     if (typeof body[key] !== 'string' || !body[key].trim() || body[key].length > maximum) return reply({ error: 'Please complete all student details.' }, 400);
     input[key] = body[key];
   }
+  if (!/^\d{6}$/.test(input.index)) return reply({ error: 'Enter a valid student index: exactly 6 digits.' }, 400);
+  if (!allowedMonths().includes(input.month)) return reply({ error: 'Select a valid month: this month or one of the last 2 months.' }, 400);
   const image = body.image;
   if (!image || !TYPES.includes(image.type) || typeof image.base64 !== 'string' ||
       !image.base64.length || image.base64.length > 3_495_256 || !/^[A-Za-z0-9+/]+={0,2}$/.test(image.base64) || image.base64.length % 4 !== 0) {

@@ -20,7 +20,7 @@ https://script.google.com/u/0/home/projects/1YsQErdhoeRecuVJkAtNe8eLNrT78nmprV9x
 3. Replace the new file's default `myFunction` code with the full contents of `apps-script/Bridge.gs` from this repo.
 4. Save. There should be only one `doPost` function in the project. If you already have a custom `doPost`, combine its routing before adding this bridge.
 
-The supplied `apps-script/Code.gs` and `apps-script/Index.html` are copies of the earlier backend for reference and recovery. **You only need to add Bridge.gs to the existing project.** The bridge calls `getOptions`, `validate_`, `image_`, and `submitEnrollment` from your existing Code.gs.
+The supplied `apps-script/Index.html` is a copy of the earlier Google form for reference and recovery. **Add Bridge.gs, and replace the whole content of your project's `Code.gs` with `apps-script/Code.gs` from this repo.** The updated Code.gs adds the 6-digit index rule, the 3-month limit, and the Student status column. Script properties are not affected. The bridge calls `getOptions`, `validate_`, `image_`, and `submitEnrollment` from your existing Code.gs.
 
 Do not create a new spreadsheet or rerun setup for this migration. In **Project Settings → Script properties**, check that the existing `SPREADSHEET_ID` and `UPLOAD_FOLDER_ID` still point to the same Sheet and folder. Leave their values unchanged.
 
@@ -45,11 +45,12 @@ In Apps Script, select **Add script property**, enter `VERCEL_API_SECRET`, paste
 
 1. In the Apps Script function selector, choose **installUploadCleanup**.
 2. Click **Run**. Review and approve Google's requested permissions for your script. This creates a daily trigger to trash abandoned partial uploads older than 24 hours. It does not trash completed card photos.
-3. Click **Deploy → Manage deployments**.
-4. Select your existing web app deployment and click the **pencil/Edit** button.
-5. For **Version**, select **New version**.
-6. Keep **Execute as: Me** and **Who has access: Anyone** so the Vercel server can call it without a Google login.
-7. Click **Deploy**, completing authorization if Google requests it. Keep the existing `/exec` URL:
+3. Choose **installVerifiedStudents** and click **Run**. This creates a **Verified Students** tab that lists, automatically, every student index staff marked **Completed** or **Activated**. Do not type in that tab.
+4. Click **Deploy → Manage deployments**.
+5. Select your existing web app deployment and click the **pencil/Edit** button.
+6. For **Version**, select **New version**.
+7. Keep **Execute as: Me** and **Who has access: Anyone** so the Vercel server can call it without a Google login.
+8. Click **Deploy**, completing authorization if Google requests it. Keep the existing `/exec` URL:
 
 ```text
 https://script.google.com/macros/s/YOUR_ID/exec
@@ -89,16 +90,16 @@ student-enrollment/
 ├── src/
 │   ├── main.jsx            # React student form
 │   ├── notes.js            # English + Sinhala notes shown above the card upload
+│   ├── months.js           # Which months students may choose (this month + last 2, Sri Lanka time)
 │   ├── upload.js           # Photo validation and upload requests
 │   ├── style.css           # Tailwind import and dark theme colors
 │   ├── assets/logo.png     # Class logo
 │   ├── lib/utils.js        # shadcn class-name helper
 │   └── components/
-│       ├── ui/             # shadcn components (alert, button, input, label, popover, select)
+│       ├── ui/             # shadcn components (alert, button, input, label, select)
 │       ├── Aurora.jsx, GradientText.jsx, ShinyText.jsx,
 │       │   SpotlightCard.jsx, StarBorder.jsx   # React Bits effects
 │       ├── CardNotes.jsx   # Renders the notes from notes.js
-│       ├── MonthPicker.jsx # Month and year picker
 │       └── PhotoDropzone.jsx # Card photo drag-and-drop box
 ├── check.mjs               # New transport checks
 ├── index.html
@@ -148,7 +149,7 @@ Environment variable changes apply to new deployments, so redeploy after changin
 ## 6. Check the complete flow before sharing
 
 1. Open the Vercel URL on a phone. Confirm that batch and center choices load.
-2. Select a month and use a distinct test student index, for example `TEST-REACT-001`.
+2. Select a month and use a distinct 6-digit test student index that no real student has, for example `999999`.
 3. Upload a harmless test card image and submit once.
 4. Open **Enrollments** in your Sheet. Confirm the new row has the correct details, **Pending** in column G, and a Drive link in column H.
 5. Open that link as staff. Confirm the image is stored in your existing Drive folder.
@@ -157,6 +158,13 @@ Environment variable changes apply to new deployments, so redeploy after changin
 8. Delete your test enrollment row and trash its test photo after checking. This is manual test cleanup, separate from the automatic partial-upload cleanup.
 
 Staff with access to the Sheet also need permission to open your private Drive folder. Share that folder with the staff Google accounts who review cards. The code does not make uploaded photos public.
+
+## Index, month and verification rules
+
+- **Student index:** exactly 6 digits (any prefix, so repeat students with older 25/26 indexes work). Enforced in the form, the Vercel API and Apps Script.
+- **Months:** students can pick this month and the 2 months before it, never a future month. Sri Lanka time decides which month it is. To change how far back they can go, edit `src/months.js` and `allowedMonths_()` in `Code.gs`.
+- **Student status (Enrollments column K):** each new request is labelled **New student (not verified yet)**, **Verified student**, or **Verified student - name differs**. A student becomes verified when staff mark any of their requests **Completed** or **Activated**. Check "name differs" rows carefully, since someone may be using another student's index. There is no student roster to maintain.
+- **Staff views:** Staff Pending and Staff Completed show columns A to J only. To show Student status there, change the formula range `Enrollments!A2:J` to `A2:K` in cell A5 of each view, and type `Student status` in K4.
 
 ## Updating later
 

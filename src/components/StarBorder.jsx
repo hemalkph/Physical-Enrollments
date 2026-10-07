@@ -1,4 +1,3 @@
-'use client';
 
 const StarBorder = ({
   as: Component = 'button',

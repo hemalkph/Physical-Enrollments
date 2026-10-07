@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import crypto from 'node:crypto';
 import { GET, POST } from './api/enrollment.js';
+import { allowedMonths } from './src/months.js';
 import { cardParts, sendEnrollment, MAX_SIZE, PART_SIZE } from './src/upload.js';
 await import('./apps-script/check.cjs');
 
@@ -45,7 +46,10 @@ const context = vm.createContext({
   LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock() {} }) },
   DriveApp: { getFolderById: () => folder, getFileById: id => files.get(id) },
   CacheService: { getScriptCache: () => ({ get: key => sessions.get(key), put: (key, value) => sessions.set(key, value), remove: key => sessions.delete(key) }) },
-  Utilities: { base64Decode: value => Array.from(Buffer.from(value, 'base64')), newBlob, getUuid: () => crypto.randomUUID() }
+  Utilities: { formatDate: (date, zone) => {
+    const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: zone, year: 'numeric', month: 'numeric' }).formatToParts(date).map(x => [x.type, x.value]));
+    return p.year + '-' + p.month;
+  }, base64Decode: value => Array.from(Buffer.from(value, 'base64')), newBlob, getUuid: () => crypto.randomUUID() }
 });
 vm.runInContext(fs.readFileSync(new URL('./apps-script/Code.gs', import.meta.url), 'utf8'), context);
 vm.runInContext(fs.readFileSync(new URL('./apps-script/Bridge.gs', import.meta.url), 'utf8'), context);
@@ -73,12 +77,19 @@ globalThis.FileReader = class {
     this.onload();
   }
 };
-const details = { name: '=Formula student', index: 'test001', batch: '2027 A/L', center: 'Main center', month: '2026-10' };
+const [month0, month1] = allowedMonths();
+const details = { name: '=Formula student', index: '250001', batch: '2027 A/L', center: 'Main center', month: month0 };
 const jpeg = size => { const bytes = Buffer.alloc(size); bytes.set([255, 216, 255]); return new File([bytes], 'card.jpg', { type: 'image/jpeg' }); };
 try {
   assert.deepEqual((await (await GET()).json()).batches, ['2027 A/L']);
   assert.equal((await POST(new Request('https://enrollment.example/api/enrollment', { method: 'POST', headers: { Origin: 'https://wrong.example', 'Content-Type': 'application/json' }, body: '{}' }))).status, 403);
   assert.equal((await POST(new Request('https://enrollment.example/api/enrollment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'admin' }) }))).status, 400);
+  const post = change => POST(new Request('https://enrollment.example/api/enrollment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'submit', ...details, ...change }) }));
+  for (const [change, pattern] of [[{ index: 'abc123' }, /6 digits/], [{ index: '12345' }, /6 digits/], [{ month: '2000-01' }, /last 2 months/], [{ month: '2099-01' }, /last 2 months/]]) {
+    const refused = await post(change);
+    assert.equal(refused.status, 400);
+    assert.match((await refused.json()).error, pattern);
+  }
   assert.throws(() => cardParts(jpeg(MAX_SIZE + 1)), /5 MB/);
   assert.equal(cardParts(jpeg(PART_SIZE)).length, 1);
   await assert.rejects(sendEnrollment(details, new File(['wrong bytes'], 'card.jpg', { type: 'image/jpeg' }), () => {}), /Choose a JPG/);
@@ -86,25 +97,25 @@ try {
   const result = await sendEnrollment(details, jpeg(100), () => {});
   assert.match(result.message, /saved/);
   assert.equal(rows[1][1], "'=Formula student");
-  assert.equal(rows[1][2], 'TEST001');
+  assert.equal(rows[1][2], '250001');
   assert.equal(rows[1][6], 'Pending');
   assert.match(rows[1][7], /drive.google.com/);
   await assert.rejects(sendEnrollment(details, jpeg(100), () => {}), /already exists/);
   assert.equal(files.size, 1);
-  const large = await sendEnrollment({ ...details, index: 'test002' }, jpeg(MAX_SIZE), () => {});
+  const large = await sendEnrollment({ ...details, index: '250002' }, jpeg(MAX_SIZE), () => {});
   assert.match(large.message, /saved/);
   assert.equal(rows.length, 3);
   assert.equal(sessions.size, 0);
   assert.equal([...files.values()].filter(file => file.trashed).length, 1);
-  const savedLarge = [...files.values()].find(file => file.getName() === 'TEST002_2026-10.jpg');
+  const savedLarge = [...files.values()].find(file => file.getName() === `250002_${month0}.jpg`);
   assert.equal(savedLarge.getBlob().getBytes().length, MAX_SIZE);
   for (const body of bodies) assert.ok(Buffer.byteLength(body) < 3_600_000);
-  const start = bridge({ ...details, index: 'test003', action: 'upload-start', secret: props.VERCEL_API_SECRET,
+  const start = bridge({ ...details, index: '250003', action: 'upload-start', secret: props.VERCEL_API_SECRET,
     image: { type: 'image/jpeg', base64: Buffer.from(await jpeg(PART_SIZE).arrayBuffer()).toString('base64') } });
   assert.equal(start.ok, true);
-  const finish = { ...details, index: 'test003', action: 'submit', uploadId: start.data.uploadId, secret: props.VERCEL_API_SECRET,
+  const finish = { ...details, index: '250003', action: 'submit', uploadId: start.data.uploadId, secret: props.VERCEL_API_SECRET,
     image: { type: 'image/jpeg', base64: Buffer.from([1]).toString('base64') } };
-  assert.match(bridge({ ...finish, month: '2026-11' }).error, /details changed/);
+  assert.match(bridge({ ...finish, month: month1 }).error, /details changed/);
   sessions.clear();
   assert.match(bridge(finish).error, /expired/);
   assert.equal(rows.length, 3);

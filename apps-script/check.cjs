@@ -16,6 +16,7 @@ const lists = { Batches: [['Batch'], ['2027 A/L'], ['2028 A/L']], Centers: [['Ph
 function sheet(data, name) {
   return {
     getName: () => name,
+    clear: () => {},
     getMaxRows: () => 1000,
     getLastRow: () => data.length,
     setFrozenRows: () => {},
@@ -88,6 +89,11 @@ const context = vm.createContext({
       } };
     }
   },
+  Utilities: { formatDate: (date, zone) => {
+    assert.equal(zone, 'Asia/Colombo');
+    const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: zone, year: 'numeric', month: 'numeric' }).formatToParts(date).map(x => [x.type, x.value]));
+    return p.year + '-' + p.month;
+  } },
   LockService: { getScriptLock: () => ({ tryLock: () => !busy, releaseLock: () => releases++ }) }
 });
 vm.runInContext(fs.readFileSync(path.join(__dirname, 'Code.gs'), 'utf8'), context);
@@ -110,51 +116,54 @@ assert.match(tables['Staff Dashboard'][6][1], /Activated/);
 assert.match(tables['Staff Pending'][4][0], /Needs correction/);
 assert.match(tables['Staff Completed'][4][0], /Completed/);
 assert.equal(folders, 1);
-const input = { name: 'Test Student', index: '001a', batch: '2027 A/L', center: 'Main center', month: '2026-10' };
+const [m0, m1, m2] = context.allowedMonths_();
+const input = { name: 'Test Student', index: '250001', batch: '2027 A/L', center: 'Main center', month: m0 };
 assert.match(context.submitEnrollment(input).message, /saved/);
-assert.equal(rows[1][2], '001A');
+assert.equal(rows[1][2], '250001');
 assert.equal(rows[1][6], 'Pending');
 assert.equal(rows[1][7], '');
+assert.equal(rows[0][10], 'Student status');
+assert.equal(rows[1][10], 'New student (not verified yet)');
 context.setup_();
-assert.equal(rows[1][2], '001A');
+assert.equal(rows[1][2], '250001');
 assert.equal(folders, 1);
 assert.throws(() => context.submitEnrollment(input), /already exists/);
 assert.equal(releases, 2);
 assert.equal(rows.length, 2);
-context.submitEnrollment({ ...input, month: '2026-11', name: '=IMPORTXML("bad")' });
+context.submitEnrollment({ ...input, month: m1, name: '=IMPORTXML("bad")' });
 assert.equal(rows[2][1], '\'=IMPORTXML("bad")');
-for (const change of [{ month: '2026-13' }, { month: '2026-1' }, { name: '' }, { index: '=BAD' }, { batch: 'Unknown' }, { center: 'Unknown' }, { name: 'a'.repeat(121) }]) {
+for (const change of [{ month: '2026-13' }, { month: '2026-1' }, { month: '2099-01' }, { month: '2000-01' }, { name: '' }, { index: '=BAD' }, { index: '12345' }, { index: '1234567' }, { index: '25000a' }, { index: '250 002' }, { batch: 'Unknown' }, { center: 'Unknown' }, { name: 'a'.repeat(121) }]) {
   assert.throws(() => context.submitEnrollment({ ...input, ...change }));
 }
 assert.equal(rows.length, 3);
 busy = true;
-assert.throws(() => context.submitEnrollment({ ...input, month: '2026-12' }), /busy/);
+assert.throws(() => context.submitEnrollment({ ...input, index: '250009' }), /busy/);
 assert.equal(rows.length, 3);
 busy = false;
 function blob(type, bytes, name = 'upload.png') {
   return { getContentType: () => type, getBytes: () => bytes, getName: () => name, setName: value => { name = value; return blob(type, bytes, name); } };
 }
 const png = blob('image/png', [137, 80, 78, 71, 13, 10, 26, 10]);
-const withImage = { ...input, month: '2026-12', image: png };
+const withImage = { ...input, index: '250003', image: png };
 context.submitEnrollment(withImage);
 assert.equal(uploads, 1);
 assert.match(rows[3][7], /drive.google.com/);
 assert.throws(() => context.submitEnrollment(withImage), /already exists/);
 assert.equal(uploads, 1);
 for (const image of [blob('image/png', [1, 2, 3]), blob('image/svg+xml', [1]), blob('image/png', []), blob('image/png', new Array(5 * 1024 * 1024 + 1)), {}]) {
-  assert.throws(() => context.submitEnrollment({ ...input, month: '2027-01', image }));
+  assert.throws(() => context.submitEnrollment({ ...input, index: '250004', image }));
 }
 assert.equal(context.image_(blob('image/jpeg', [255, 216, 255])).extension, 'jpg');
 assert.equal(context.image_(blob('image/webp', [82, 73, 70, 70, 0, 0, 0, 0, 87, 69, 66, 80])).extension, 'webp');
 assert.equal(context.image_(blob('application/octet-stream', [], '')), null);
 uploadFailure = true;
 const beforeReleases = releases;
-assert.throws(() => context.submitEnrollment({ ...withImage, month: '2027-01' }), /Drive upload failed/);
+assert.throws(() => context.submitEnrollment({ ...withImage, index: '250005' }), /Drive upload failed/);
 assert.equal(rows.length, 4);
 assert.equal(releases, beforeReleases + 1);
 uploadFailure = false;
 writeFailure = true;
-assert.throws(() => context.submitEnrollment({ ...withImage, month: '2027-01' }), /Sheet write failed/);
+assert.throws(() => context.submitEnrollment({ ...withImage, index: '250006' }), /Sheet write failed/);
 assert.equal(rows.length, 4);
 assert.equal(uploads, 2); // Retain the image for staff recovery if the spreadsheet write fails.
 writeFailure = false;
@@ -193,6 +202,19 @@ edit(2);
 assert.equal(rows[1][8], '');
 context.onEdit(); // Clicking Run on onEdit is harmless.
 assert.equal(rows[0][8], 'Completed at');
+// Student status: staff-confirmed indexes are recognised on later requests.
+rows[1][6] = 'Completed';
+rows[3][6] = 'Activated';
+context.submitEnrollment({ ...input, month: m2 });
+assert.equal(rows[rows.length - 1][10], 'Verified student');
+context.submitEnrollment({ ...input, index: '250003', month: m1, name: '  someone   ELSE ' });
+assert.equal(rows[rows.length - 1][10], 'Verified student - name differs');
+context.submitEnrollment({ ...input, index: '250003', month: m2, name: ' test   STUDENT' });
+assert.equal(rows[rows.length - 1][10], 'Verified student');
+context.submitEnrollment({ ...input, index: '250777' });
+assert.equal(rows[rows.length - 1][10], 'New student (not verified yet)');
+context.installVerifiedStudents();
+assert.match(tables['Verified Students'][3][0], /FILTER/);
 const html = fs.readFileSync(path.join(__dirname, 'Index.html'), 'utf8');
 new vm.Script(html.match(/<script>([\s\S]*?)<\/script>/)[1]);
 console.log('Passed: enrollment/upload checks, staff status tracking, embed configuration, and client syntax.');

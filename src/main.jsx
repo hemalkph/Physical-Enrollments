@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { api, cardParts, sendEnrollment } from './upload.js';
+import { allowedMonths, monthLabel } from './months.js';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,7 +13,6 @@ import GradientText from '@/components/GradientText';
 import SpotlightCard from '@/components/SpotlightCard';
 import ShinyText from '@/components/ShinyText';
 import StarBorder from '@/components/StarBorder';
-import MonthPicker from '@/components/MonthPicker';
 import PhotoDropzone from '@/components/PhotoDropzone';
 import CardNotes from '@/components/CardNotes';
 import logo from './assets/logo.png';
@@ -40,8 +40,8 @@ function App() {
   const [preview, setPreview] = useState('');
   const [batch, setBatch] = useState('');
   const [center, setCenter] = useState('');
-  const now = new Date();
-  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const months = allowedMonths();
+  const currentMonth = months[0];
   const [month, setMonth] = useState(currentMonth);
 
   async function loadOptions() {
@@ -117,8 +117,10 @@ function App() {
             <Field id="name" label="Student name">
               <Input id="name" name="name" autoComplete="name" maxLength={120} placeholder="Your full name" required />
             </Field>
-            <Field id="index" label="Student index">
-              <Input id="index" name="index" autoCapitalize="characters" maxLength={50} placeholder="Your institute student index" required />
+            <Field id="index" label="Student index" help="Your 6-digit institute student index, for example 250002.">
+              <Input id="index" name="index" inputMode="numeric" autoComplete="off" pattern="\d{6}" maxLength={6} placeholder="6-digit student index"
+                title="Enter exactly 6 digits" required aria-describedby="index-help"
+                onInput={event => { event.target.value = event.target.value.replace(/\D/g, ''); }} />
             </Field>
             <div className="grid gap-5 sm:grid-cols-2">
               <Field id="batch" label="Student batch">
@@ -134,8 +136,11 @@ function App() {
                 </Select>
               </Field>
             </div>
-            <Field id="month" label="Enrollment month" help="Select the month you want to enroll for, including the year.">
-              <MonthPicker id="month" value={month} onChange={setMonth} minYear={now.getFullYear() - 1} maxYear={now.getFullYear() + 1} aria-describedby="month-help" />
+            <Field id="month" label="Enrollment month" help="Choose this month or one of the last 2 months.">
+              <Select value={month} onValueChange={setMonth}>
+                <SelectTrigger id="month" className="w-full" aria-describedby="month-help"><SelectValue /></SelectTrigger>
+                <SelectContent>{months.map((value, i) => <SelectItem key={value} value={value}>{monthLabel(value)}{i === 0 && ' (this month)'}</SelectItem>)}</SelectContent>
+              </Select>
             </Field>
             <Field id="image" label="Monthly physical card photo" help="Upload a clear JPG, PNG or WebP image, up to 5 MB.">
               <CardNotes />
