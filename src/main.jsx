@@ -48,7 +48,8 @@ function App() {
     setLoading(true);
     setError('');
     try {
-      const result = await api();
+      // Apps Script can be slow or fail when idle, so retry once before showing an error.
+      const result = await api().catch(() => api());
       if (!Array.isArray(result.batches) || !Array.isArray(result.centers) || !result.batches.length || !result.centers.length) {
         throw new Error('Staff need to add batches and physical centers before enrollment opens.');
       }
@@ -107,7 +108,7 @@ function App() {
       <SpotlightCard spotlightColor="rgba(29, 140, 255, 0.18)" className="!border-border !bg-popover/80 backdrop-blur">
         <div role="alert">{error && <Alert variant="destructive" className="mb-5"><AlertCircle /><AlertDescription>{error}</AlertDescription></Alert>}</div>
         <div role="status" aria-live="polite">{message && <Alert className="mb-5 border-primary/40 text-primary"><CheckCircle2 /><AlertDescription className="text-primary">{message}</AlertDescription></Alert>}</div>
-        {loading && <p role="status" className="mb-4 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" /><ShinyText text="Loading batches and centers…" {...shiny} /></p>}
+        {loading && <p role="status" className="mb-4 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" /><ShinyText text="Loading batches and centers… this can take up to 30 seconds." {...shiny} /></p>}
         {!loading && !options && <Button type="button" variant="outline" className="mb-4 w-full" onClick={loadOptions}>Try loading again</Button>}
 
         <form onSubmit={submit} aria-busy={busy}>

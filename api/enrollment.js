@@ -30,8 +30,11 @@ async function forward(payload) {
   }
 }
 
-export function GET() {
-  return forward({ action: 'options' });
+export async function GET() {
+  const response = await forward({ action: 'options' });
+  // Apps Script is slow (3-27s). Let Vercel's CDN serve the lists instantly; new batches/centers show within ~5 minutes.
+  if (response.ok) response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=86400');
+  return response;
 }
 
 export async function POST(request) {
