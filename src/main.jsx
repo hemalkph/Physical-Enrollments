@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import Lenis from 'lenis';
 import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { api, cardParts, sendEnrollment } from './upload.js';
 import { normalizeWhatsapp } from './whatsapp.js';
@@ -20,6 +21,8 @@ import logo from './assets/logo.png';
 import './style.css';
 
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+// Smooth wheel/touch scrolling. Skipped for reduced motion; dropdown lists keep native scrolling.
+if (!reduceMotion) new Lenis({ autoRaf: true, prevent: node => !!node.closest('[role="listbox"]') });
 const shiny = { color: '#93a1c4', shineColor: '#ffffff', disabled: reduceMotion };
 
 function Field({ id, label, help, children }) {
@@ -92,7 +95,7 @@ function App() {
   }
 
   return <div className="relative min-h-svh overflow-hidden">
-    {!reduceMotion && <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-[460px] opacity-60">
+    {!reduceMotion && <div aria-hidden className="pointer-events-none fixed inset-x-0 top-0 h-[460px] opacity-60 [mask-image:linear-gradient(to_bottom,transparent,#000_35%)]">
       <Aurora colorStops={['#0a4bff', '#38bdf8', '#1d4ed8']} amplitude={1} blend={0.6} />
     </div>}
     <main className="relative z-10 mx-auto max-w-xl px-4 py-10 sm:py-14">
