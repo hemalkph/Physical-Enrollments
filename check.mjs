@@ -4,6 +4,7 @@ import vm from 'node:vm';
 import crypto from 'node:crypto';
 import { GET, POST } from './api/enrollment.js';
 import { allowedMonths } from './src/months.js';
+import { normalizeWhatsapp } from './src/whatsapp.js';
 import { cardParts, sendEnrollment, MAX_SIZE, PART_SIZE } from './src/upload.js';
 await import('./apps-script/check.cjs');
 
@@ -78,14 +79,14 @@ globalThis.FileReader = class {
   }
 };
 const [month0, month1] = allowedMonths();
-const details = { name: '=Formula student', index: '250001', batch: '2027 A/L', center: 'Main center', month: month0 };
+const details = { name: '=Formula student', index: '250001', whatsapp: '077 123 4567', batch: '2027 A/L', center: 'Main center', month: month0 };
 const jpeg = size => { const bytes = Buffer.alloc(size); bytes.set([255, 216, 255]); return new File([bytes], 'card.jpg', { type: 'image/jpeg' }); };
 try {
   assert.deepEqual((await (await GET()).json()).batches, ['2027 A/L']);
   assert.equal((await POST(new Request('https://enrollment.example/api/enrollment', { method: 'POST', headers: { Origin: 'https://wrong.example', 'Content-Type': 'application/json' }, body: '{}' }))).status, 403);
   assert.equal((await POST(new Request('https://enrollment.example/api/enrollment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'admin' }) }))).status, 400);
   const post = change => POST(new Request('https://enrollment.example/api/enrollment', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'submit', ...details, ...change }) }));
-  for (const [change, pattern] of [[{ index: 'abc123' }, /6 digits/], [{ index: '12345' }, /6 digits/], [{ month: '2000-01' }, /last 2 months/], [{ month: '2099-01' }, /last 2 months/]]) {
+  for (const [change, pattern] of [[{ index: 'abc123' }, /6 digits/], [{ index: '12345' }, /6 digits/], [{ whatsapp: '0671234567' }, /WhatsApp/], [{ whatsapp: '' }, /complete/], [{ month: '2000-01' }, /last 2 months/], [{ month: '2099-01' }, /last 2 months/]]) {
     const refused = await post(change);
     assert.equal(refused.status, 400);
     assert.match((await refused.json()).error, pattern);
@@ -100,6 +101,9 @@ try {
   assert.equal(rows[1][2], '250001');
   assert.equal(rows[1][6], 'Pending');
   assert.match(rows[1][7], /drive.google.com/);
+  for (const value of ['0771234567', '+94771234567', '94 77-123 4567', '771234567']) assert.equal(normalizeWhatsapp(value), '94771234567');
+  assert.equal(rows[0][11], 'WhatsApp');
+  assert.equal(rows[1][11], '=HYPERLINK("https://wa.me/94771234567?text=Hi%20%3DFormula%20student","0771234567")');
   await assert.rejects(sendEnrollment(details, jpeg(100), () => {}), /already exists/);
   assert.equal(files.size, 1);
   const large = await sendEnrollment({ ...details, index: '250002' }, jpeg(MAX_SIZE), () => {});
@@ -110,10 +114,10 @@ try {
   const savedLarge = [...files.values()].find(file => file.getName() === `250002_${month0}.jpg`);
   assert.equal(savedLarge.getBlob().getBytes().length, MAX_SIZE);
   for (const body of bodies) assert.ok(Buffer.byteLength(body) < 3_600_000);
-  const start = bridge({ ...details, index: '250003', action: 'upload-start', secret: props.VERCEL_API_SECRET,
+  const start = bridge({ ...details, whatsapp: '94771234567', index: '250003', action: 'upload-start', secret: props.VERCEL_API_SECRET,
     image: { type: 'image/jpeg', base64: Buffer.from(await jpeg(PART_SIZE).arrayBuffer()).toString('base64') } });
   assert.equal(start.ok, true);
-  const finish = { ...details, index: '250003', action: 'submit', uploadId: start.data.uploadId, secret: props.VERCEL_API_SECRET,
+  const finish = { ...details, whatsapp: '94771234567', index: '250003', action: 'submit', uploadId: start.data.uploadId, secret: props.VERCEL_API_SECRET,
     image: { type: 'image/jpeg', base64: Buffer.from([1]).toString('base64') } };
   assert.match(bridge({ ...finish, month: month1 }).error, /details changed/);
   sessions.clear();

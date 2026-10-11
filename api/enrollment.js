@@ -1,4 +1,5 @@
 import { allowedMonths } from '../src/months.js';
+import { normalizeWhatsapp } from '../src/whatsapp.js';
 
 const MAX_BODY = 3_600_000;
 const TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -53,11 +54,14 @@ export async function POST(request) {
   }
   if (!body || !['upload-start', 'submit'].includes(body.action)) return reply({ error: 'Invalid action.' }, 400);
   const input = {};
-  for (const [key, maximum] of Object.entries({ name: 120, index: 50, batch: 100, center: 100, month: 7 })) {
+  for (const [key, maximum] of Object.entries({ name: 120, index: 50, whatsapp: 30, batch: 100, center: 100, month: 7 })) {
     if (typeof body[key] !== 'string' || !body[key].trim() || body[key].length > maximum) return reply({ error: 'Please complete all student details.' }, 400);
     input[key] = body[key];
   }
   if (!/^\d{6}$/.test(input.index)) return reply({ error: 'Enter a valid student index: exactly 6 digits.' }, 400);
+  const whatsapp = normalizeWhatsapp(input.whatsapp);
+  if (!whatsapp) return reply({ error: 'Enter a valid WhatsApp number: a Sri Lankan mobile like 0771234567.' }, 400);
+  input.whatsapp = whatsapp;
   if (!allowedMonths().includes(input.month)) return reply({ error: 'Select a valid month: this month or one of the last 2 months.' }, 400);
   const image = body.image;
   if (!image || !TYPES.includes(image.type) || typeof image.base64 !== 'string' ||

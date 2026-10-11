@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { api, cardParts, sendEnrollment } from './upload.js';
+import { normalizeWhatsapp } from './whatsapp.js';
 import { allowedMonths, monthLabel } from './months.js';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -76,10 +77,11 @@ function App() {
     event.preventDefault();
     if (busy) return;
     if (!batch || !center) { setError('Please select your batch and physical center.'); return; }
+    if (!normalizeWhatsapp(new FormData(event.currentTarget).get('whatsapp'))) { setError('Enter a valid WhatsApp number, like 0771234567.'); return; }
     if (!photo) { setError('Please upload your monthly physical card photo.'); return; }
     const form = event.currentTarget;
     const fields = new FormData(form);
-    const data = { batch, center, month, ...Object.fromEntries(['name', 'index'].map(key => [key, String(fields.get(key) || '').trim()])) };
+    const data = { batch, center, month, ...Object.fromEntries(['name', 'index', 'whatsapp'].map(key => [key, String(fields.get(key) || '').trim()])) };
     setBusy(true); setError(''); setMessage('');
     try {
       const result = await sendEnrollment(data, photo, setProgress);
@@ -121,6 +123,10 @@ function App() {
               <Input id="index" name="index" inputMode="numeric" autoComplete="off" pattern="\d{6}" maxLength={6} placeholder="6-digit student index"
                 title="Enter exactly 6 digits" required aria-describedby="index-help"
                 onInput={event => { event.target.value = event.target.value.replace(/\D/g, ''); }} />
+            </Field>
+            <Field id="whatsapp" label="WhatsApp number" help="Sri Lankan mobile number, for example 0771234567. Staff may contact you here.">
+              <Input id="whatsapp" name="whatsapp" type="tel" inputMode="tel" autoComplete="tel" maxLength={16} placeholder="07X XXX XXXX"
+                aria-describedby="whatsapp-help" required />
             </Field>
             <div className="grid gap-5 sm:grid-cols-2">
               <Field id="batch" label="Student batch">

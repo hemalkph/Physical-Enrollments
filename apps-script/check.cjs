@@ -117,7 +117,7 @@ assert.match(tables['Staff Pending'][4][0], /Needs correction/);
 assert.match(tables['Staff Completed'][4][0], /Completed/);
 assert.equal(folders, 1);
 const [m0, m1, m2] = context.allowedMonths_();
-const input = { name: 'Test Student', index: '250001', batch: '2027 A/L', center: 'Main center', month: m0 };
+const input = { name: 'Test Student', index: '250001', whatsapp: '94771234567', batch: '2027 A/L', center: 'Main center', month: m0 };
 assert.match(context.submitEnrollment(input).message, /saved/);
 assert.equal(rows[1][2], '250001');
 assert.equal(rows[1][6], 'Pending');
@@ -132,7 +132,7 @@ assert.equal(releases, 2);
 assert.equal(rows.length, 2);
 context.submitEnrollment({ ...input, month: m1, name: '=IMPORTXML("bad")' });
 assert.equal(rows[2][1], '\'=IMPORTXML("bad")');
-for (const change of [{ month: '2026-13' }, { month: '2026-1' }, { month: '2099-01' }, { month: '2000-01' }, { name: '' }, { index: '=BAD' }, { index: '12345' }, { index: '1234567' }, { index: '25000a' }, { index: '250 002' }, { batch: 'Unknown' }, { center: 'Unknown' }, { name: 'a'.repeat(121) }]) {
+for (const change of [{ month: '2026-13' }, { month: '2026-1' }, { month: '2099-01' }, { month: '2000-01' }, { name: '' }, { index: '=BAD' }, { index: '12345' }, { index: '1234567' }, { index: '25000a' }, { index: '250 002' }, { whatsapp: '0771234567' }, { whatsapp: '94671234567' }, { whatsapp: '' }, { batch: 'Unknown' }, { center: 'Unknown' }, { name: 'a'.repeat(121) }]) {
   assert.throws(() => context.submitEnrollment({ ...input, ...change }));
 }
 assert.equal(rows.length, 3);

@@ -144,12 +144,16 @@ function validate_(input, options) {
   const data = {
     name: text_(input.name, 'Student name', 120),
     index: text_(input.index, 'Student index', 50).toUpperCase(),
+    whatsapp: text_(input.whatsapp, 'WhatsApp number', 11),
     batch: text_(input.batch, 'Batch', 100),
     center: text_(input.center, 'Physical center', 100),
     month: text_(input.month, 'Enrollment month', 7)
   };
   if (!/^\d{6}$/.test(data.index)) {
     throw new Error('Enter a valid student index: exactly 6 digits.');
+  }
+  if (!/^947\d{8}$/.test(data.whatsapp)) { // already normalized by the Vercel API (src/whatsapp.js)
+    throw new Error('Enter a valid WhatsApp number: a Sri Lankan mobile like 0771234567.');
   }
   if (!allowedMonths_().includes(data.month)) {
     throw new Error('Select a valid month: this month or one of the last 2 months.');
@@ -208,6 +212,8 @@ function submitEnrollment(input) {
     if (sheet.getRange(1, 8).getDisplayValue() !== 'Uploaded image') {
       throw new Error('Staff must run the updated setup before accepting requests.');
     }
+    const whatsappHeader = sheet.getRange(1, 12).getDisplayValue();
+    if (whatsappHeader && whatsappHeader !== 'WhatsApp') throw new Error('Staff must keep column L empty for WhatsApp numbers.');
     let imageUrl = '';
     if (image) {
       const folderId = PropertiesService.getScriptProperties().getProperty('UPLOAD_FOLDER_ID');
@@ -226,6 +232,10 @@ function submitEnrollment(input) {
     const statusHeader = sheet.getRange(1, 11).getDisplayValue();
     if (!statusHeader) sheet.getRange(1, 11, 1, 1).setValues([['Student status']]);
     if (!statusHeader || statusHeader === 'Student status') sheet.getRange(next, 11, 1, 1).setValues([[studentStatus]]);
+    // Column L: click opens a WhatsApp chat with this student, name pre-filled. Digits-only number + encoded text can't break the formula.
+    if (!whatsappHeader) sheet.getRange(1, 12, 1, 1).setValues([['WhatsApp']]);
+    sheet.getRange(next, 12, 1, 1).setValues([['=HYPERLINK("https://wa.me/' + data.whatsapp + '?text=' +
+      encodeURIComponent('Hi ' + data.name) + '","0' + data.whatsapp.slice(2) + '")']]);
     SpreadsheetApp.flush();
     return { message: 'Your enrollment request was saved for ' + data.month + '. Staff will review it and activate your LMS card.' };
   } finally {

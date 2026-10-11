@@ -9,6 +9,25 @@ export function cardParts(file) {
   return file.size > PART_SIZE ? [file.slice(0, PART_SIZE), file.slice(PART_SIZE)] : [file];
 }
 
+// Phone photos are 3-5 MB; a card stays readable at 1600 px / JPEG 0.8 (~300 KB), so it uploads in one fast request.
+// Falls back to the original file if the browser can't decode it (e.g. HEIC) or the result isn't smaller.
+export async function compress(file) {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(bitmap.width * scale);
+    canvas.height = Math.round(bitmap.height * scale);
+    const context = canvas.getContext('2d');
+    context.fillStyle = '#fff'; // PNG transparency would turn black in JPEG
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    bitmap.close();
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.8));
+    return blob && blob.size < file.size ? new File([blob], 'card.jpg', { type: 'image/jpeg' }) : file;
+  } catch { return file; }
+}
+
 export function base64(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -28,7 +47,10 @@ export async function api(payload) {
   return result;
 }
 
-export async function sendEnrollment(data, file, progress) {
+export async function sendEnrollment(data, original, progress) {
+  cardParts(original);
+  progress('Preparing card photo…');
+  const file = await compress(original);
   const parts = cardParts(file);
   let uploadId;
   if (parts.length === 2) {
