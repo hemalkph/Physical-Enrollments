@@ -109,7 +109,7 @@ try {
   const large = await sendEnrollment({ ...details, index: '250002' }, jpeg(MAX_SIZE), () => {});
   assert.match(large.message, /saved/);
   assert.equal(rows.length, 3);
-  assert.equal(sessions.size, 0);
+  assert.equal([...sessions.keys()].filter(key => key.startsWith('upload:')).length, 0); // the options cache may remain
   assert.equal([...files.values()].filter(file => file.trashed).length, 1);
   const savedLarge = [...files.values()].find(file => file.getName() === `250002_${month0}.jpg`);
   assert.equal(savedLarge.getBlob().getBytes().length, MAX_SIZE);

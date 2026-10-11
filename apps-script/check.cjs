@@ -94,6 +94,7 @@ const context = vm.createContext({
     const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: zone, year: 'numeric', month: 'numeric' }).formatToParts(date).map(x => [x.type, x.value]));
     return p.year + '-' + p.month;
   } },
+  CacheService: { getScriptCache: () => { const store = new Map(); return { get: key => store.get(key), put: (key, value) => store.set(key, value) }; } },
   LockService: { getScriptLock: () => ({ tryLock: () => !busy, releaseLock: () => releases++ }) }
 });
 vm.runInContext(fs.readFileSync(path.join(__dirname, 'Code.gs'), 'utf8'), context);

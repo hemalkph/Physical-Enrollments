@@ -116,9 +116,16 @@ function options_(book, name) {
     .getDisplayValues().flat().map(value => value.trim()).filter(Boolean))];
 }
 
+// Opening the spreadsheet and reading both lists costs seconds, so keep them for 5 minutes.
+// Staff edits to Batches/Centers therefore show up within ~5 minutes (plus the CDN cache).
 function getOptions() {
+  const cache = CacheService.getScriptCache();
+  const hit = cache.get('options');
+  if (hit) return JSON.parse(hit);
   const book = book_();
-  return { batches: options_(book, 'Batches'), centers: options_(book, 'Centers') };
+  const value = { batches: options_(book, 'Batches'), centers: options_(book, 'Centers') };
+  cache.put('options', JSON.stringify(value), 300);
+  return value;
 }
 
 function text_(value, label, maximum) {
@@ -188,19 +195,17 @@ function image_(blob) {
 }
 
 function submitEnrollment(input) {
-  const book = book_();
-  const data = validate_(input, {
-    batches: options_(book, 'Batches'), centers: options_(book, 'Centers')
-  });
+  const data = validate_(input, getOptions());
   const image = image_(input.image);
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(10000)) throw new Error('The form is busy. Please try again.');
   try {
-    const sheet = book.getSheetByName('Enrollments');
+    const sheet = book_().getSheetByName('Enrollments');
     if (!sheet) throw new Error('The form is not configured. Contact your institute.');
     // ponytail: scan existing rows; use a database if enrollment volume makes this slow.
-    const rows = sheet.getLastRow() < 2 ? [] :
-      sheet.getRange(2, 2, sheet.getLastRow() - 1, 6).getDisplayValues(); // name, index, batch, center, month, status
+    const last = sheet.getLastRow();
+    const rows = last < 2 ? [] :
+      sheet.getRange(2, 2, last - 1, 6).getDisplayValues(); // name, index, batch, center, month, status
     if (rows.some(row => row[1].trim().toUpperCase() === data.index && row[4] === data.month)) {
       throw new Error('A request already exists for this student index and month. Contact staff for changes.');
     }
@@ -209,11 +214,11 @@ function submitEnrollment(input) {
     const plain = value => value.toLowerCase().replace(/\s+/g, ' ').trim();
     const studentStatus = !verified.length ? 'New student (not verified yet)'
       : verified.some(row => plain(row[0]) === plain(data.name)) ? 'Verified student' : 'Verified student - name differs';
-    if (sheet.getRange(1, 8).getDisplayValue() !== 'Uploaded image') {
+    const header = sheet.getRange(1, 1, 1, 12).getDisplayValues()[0]; // one read for the H, K and L checks
+    if (header[7] !== 'Uploaded image') {
       throw new Error('Staff must run the updated setup before accepting requests.');
     }
-    const whatsappHeader = sheet.getRange(1, 12).getDisplayValue();
-    if (whatsappHeader && whatsappHeader !== 'WhatsApp') throw new Error('Staff must keep column L empty for WhatsApp numbers.');
+    if (header[11] && header[11] !== 'WhatsApp') throw new Error('Staff must keep column L empty for WhatsApp numbers.');
     let imageUrl = '';
     if (image) {
       const folderId = PropertiesService.getScriptProperties().getProperty('UPLOAD_FOLDER_ID');
@@ -222,20 +227,19 @@ function submitEnrollment(input) {
       const file = DriveApp.getFolderById(folderId).createFile(image.blob.setName(filename));
       imageUrl = file.getUrl();
     }
-    const next = sheet.getLastRow() + 1;
+    const next = last + 1;
     sheet.getRange(next, 2, 1, 5).setNumberFormat('@');
     sheet.getRange(next, 1, 1, 8).setValues([[
       new Date(), cell_(data.name), data.index, cell_(data.batch), cell_(data.center), data.month, 'Pending', imageUrl
     ]]);
     sheet.getRange(next, 7).setDataValidation(statusRule_());
-    // Column K tells staff how much to trust the request. Never overwrite a column K that staff use for something else.
-    const statusHeader = sheet.getRange(1, 11).getDisplayValue();
-    if (!statusHeader) sheet.getRange(1, 11, 1, 1).setValues([['Student status']]);
-    if (!statusHeader || statusHeader === 'Student status') sheet.getRange(next, 11, 1, 1).setValues([[studentStatus]]);
+    // Column K tells staff how much to trust the request; never overwrite a column K that staff use for something else.
     // Column L: click opens a WhatsApp chat with this student, name pre-filled. Digits-only number + encoded text can't break the formula.
-    if (!whatsappHeader) sheet.getRange(1, 12, 1, 1).setValues([['WhatsApp']]);
-    sheet.getRange(next, 12, 1, 1).setValues([['=HYPERLINK("https://wa.me/' + data.whatsapp + '?text=' +
-      encodeURIComponent('Hi ' + data.name) + '","0' + data.whatsapp.slice(2) + '")']]);
+    const link = '=HYPERLINK("https://wa.me/' + data.whatsapp + '?text=' + encodeURIComponent('Hi ' + data.name) + '","0' + data.whatsapp.slice(2) + '")';
+    const statusUsable = !header[10] || header[10] === 'Student status';
+    if (!header[11] || (!header[10] && statusUsable)) sheet.getRange(1, 11, 1, 2).setValues([[header[10] || 'Student status', 'WhatsApp']]);
+    if (statusUsable) sheet.getRange(next, 11, 1, 2).setValues([[studentStatus, link]]);
+    else sheet.getRange(next, 12, 1, 1).setValues([[link]]);
     SpreadsheetApp.flush();
     return { message: 'Your enrollment request was saved for ' + data.month + '. Staff will review it and activate your LMS card.' };
   } finally {
