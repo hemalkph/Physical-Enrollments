@@ -35,6 +35,7 @@
   --ring: #3aa0ff;
 }
 
+html { overscroll-behavior-y: none; }
 body { margin: 0; background: var(--background); color: var(--foreground); font-family: system-ui, -apple-system, 'Segoe UI', sans-serif; }
 
 /* StarBorder (React Bits) animation */
