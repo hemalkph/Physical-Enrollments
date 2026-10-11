@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { UploadCloud, X } from 'lucide-react';
+import { Camera, UploadCloud, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { IMAGE_TYPES } from '../upload.js';
@@ -16,15 +16,21 @@ export default function PhotoDropzone({ photo, preview, onFile, onClear }) {
     <Button type="button" variant="ghost" size="icon" aria-label="Remove photo" onClick={onClear}><X /></Button>
   </div>;
 
-  return <label htmlFor="image"
+  return <div className="space-y-2"><label htmlFor="image"
     onDragOver={event => { event.preventDefault(); setDragging(true); }}
     onDragLeave={() => setDragging(false)}
     onDrop={event => { event.preventDefault(); setDragging(false); onFile(event.dataTransfer.files[0]); }}
     className={cn('flex cursor-pointer flex-col items-center gap-2 rounded-lg border-2 border-dashed border-input px-4 py-8 text-center transition-colors hover:border-primary/60 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50',
       dragging && 'border-primary bg-primary/10')}>
     <UploadCloud className="size-8 text-primary" />
-    <span className="text-sm font-medium">Tap to choose a photo <span className="font-normal text-muted-foreground">or drag it here</span></span>
+    <span className="text-sm font-medium">Tap to choose a photo <span className="hidden font-normal text-muted-foreground sm:inline">or drag it here</span></span>
     <input id="image" type="file" accept={IMAGE_TYPES.join(',')} className="sr-only" aria-describedby="image-help"
       onChange={event => { const file = event.target.files[0]; event.target.value = ''; onFile(file); }} />
-  </label>;
+  </label>
+    <label htmlFor="camera" className="hidden h-11 cursor-pointer items-center justify-center gap-2 rounded-md border border-input text-sm font-medium focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50 pointer-coarse:flex">
+      <Camera className="size-4 text-primary" />Take a photo now
+      <input id="camera" type="file" accept={IMAGE_TYPES.join(',')} capture="environment" className="sr-only"
+        onChange={event => { const file = event.target.files[0]; event.target.value = ''; onFile(file); }} />
+    </label>
+  </div>;
 }

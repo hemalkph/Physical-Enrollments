@@ -49,16 +49,16 @@ export async function api(payload) {
 
 export async function sendEnrollment(data, original, progress) {
   cardParts(original);
-  progress('Preparing card photo…');
+  progress('Preparing card photo…', 0.1);
   const file = await compress(original);
   const parts = cardParts(file);
   let uploadId;
   if (parts.length === 2) {
-    progress('Uploading card photo — part 1 of 2…');
+    progress('Uploading card photo — part 1 of 2…', 0.3);
     const started = await api({ ...data, action: 'upload-start', image: { type: file.type, base64: await base64(parts[0]) } });
     if (typeof started.uploadId !== 'string') throw new Error('The upload could not start. Please try again.');
     uploadId = started.uploadId;
   }
-  progress(parts.length === 2 ? 'Uploading card photo — part 2 of 2…' : 'Saving your request…');
+  progress(parts.length === 2 ? 'Uploading card photo — part 2 of 2…' : 'Uploading and saving your request…', parts.length === 2 ? 0.6 : 0.4);
   return api({ ...data, action: 'submit', ...(uploadId ? { uploadId } : {}), image: { type: file.type, base64: await base64(parts.at(-1)) } });
 }
