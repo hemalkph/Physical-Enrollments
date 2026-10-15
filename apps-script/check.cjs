@@ -214,6 +214,40 @@ context.submitEnrollment({ ...input, index: '250003', month: m2, name: ' test   
 assert.equal(rows[rows.length - 1][10], 'Verified student');
 context.submitEnrollment({ ...input, index: '250777' });
 assert.equal(rows[rows.length - 1][10], 'New student (not verified yet)');
+// Resubmission: staff reject/send back a request, the student sends it again into the same row.
+const last = rows.length - 1;
+for (const status of ['Rejected', 'Needs correction']) {
+  rows[last][6] = status;
+  rows[last][9] = 'Wrong slip';
+  rows[last][12] = 'old reason';
+  context.submitEnrollment({ ...input, index: '250777', name: 'Fixed Name ' + status });
+  assert.equal(rows.length, last + 1);
+  assert.equal(rows[last][1], 'Fixed Name ' + status);
+  assert.equal(rows[last][6], 'Pending');
+  assert.equal(rows[last][9], 'Wrong slip'); // staff notes survive
+  assert.equal(rows[last][12], ''); // the reason is for the previous rejection only
+}
+// Rejection message link (column N) and the student-facing lookup.
+assert.equal(rows[0][12], 'Reject reason');
+assert.equal(rows[0][13], 'Send rejection');
+assert.match(rows[last][13], new RegExp('^=IF\\(OR\\(G' + (last + 1) + '="Rejected",G' + (last + 1) + '="Needs correction"\\),HYPERLINK\\("https://wa.me/94771234567\\?text="&ENCODEURL\\('));
+assert.match(rows[last][13], /IF\(M\d+="","please check your card and details",M\d+\)/);
+rows[last][11] = '0771234567'; // the sheet displays the WhatsApp link as 07XXXXXXXX
+rows[last][12] = 'Slip is blurry';
+const lookup = (index, whatsapp) => JSON.parse(JSON.stringify(context.rejectedRequests({ index, whatsapp })));
+assert.deepEqual(lookup('250777', '94771234567').rejected, []); // Pending
+rows[last][6] = 'Rejected';
+assert.deepEqual(lookup('250777', '94771234567').rejected, [{ month: m0, reason: 'Slip is blurry' }]);
+assert.deepEqual(lookup('250777', '94779999999').rejected, []); // a guessed index without the right number reveals nothing
+assert.deepEqual(lookup('250778', '94771234567').rejected, []);
+assert.throws(() => lookup('12', '94771234567'), /Enter a valid/);
+assert.throws(() => lookup('250777', '0771234567'), /Enter a valid/);
+rows[last][6] = 'Pending';
+for (const status of ['Pending', 'Completed', 'Activated']) {
+  rows[last][6] = status;
+  assert.throws(() => context.submitEnrollment({ ...input, index: '250777' }), /already exists/);
+}
+assert.equal(rows.length, last + 1);
 context.installVerifiedStudents();
 assert.match(tables['Verified Students'][3][0], /FILTER/);
 const html = fs.readFileSync(path.join(__dirname, 'Index.html'), 'utf8');

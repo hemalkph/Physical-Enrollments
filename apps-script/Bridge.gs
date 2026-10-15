@@ -12,6 +12,8 @@ function doPost(e) {
     let data;
     if (input.action === 'options') {
       data = getOptions();
+    } else if (input.action === 'status') {
+      data = rejectedRequests(input);
     } else if (input.action === 'upload-start' || input.action === 'submit') {
       data = bridgeEnrollment_(input, properties);
     } else {

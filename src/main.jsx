@@ -1,11 +1,12 @@
 import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import Lenis from 'lenis';
-import { AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Loader2, XCircle } from 'lucide-react';
 import { api, cardParts, sendEnrollment } from './upload.js';
 import { normalizeWhatsapp } from './whatsapp.js';
 import { allowedMonths, monthLabel } from './months.js';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -66,6 +67,27 @@ function App() {
   const months = allowedMonths();
   const currentMonth = months[0];
   const [month, setMonth] = useState(currentMonth);
+  const [rejected, setRejected] = useState([]); // cards staff sent back, with their reasons
+  const formRef = useRef(null);
+  const lastCheck = useRef('');
+
+  // Once index + WhatsApp are filled in, ask whether staff rejected a card for this student and show why.
+  // Only a courtesy: a failed lookup is ignored and never blocks submitting.
+  async function checkRejected() {
+    const fields = new FormData(formRef.current);
+    const index = String(fields.get('index') || '').trim();
+    const whatsapp = String(fields.get('whatsapp') || '').trim();
+    const key = normalizeWhatsapp(whatsapp) && /^\d{6}$/.test(index) ? index + whatsapp : '';
+    if (!key || key === lastCheck.current) return;
+    lastCheck.current = key;
+    try {
+      const result = await api({ action: 'status', index, whatsapp });
+      if (!result.rejected?.length) return;
+      setRejected(result.rejected);
+      if (months.includes(result.rejected[0].month)) setMonth(result.rejected[0].month);
+    } catch { /* ignore */ }
+  }
+  useEffect(() => { if (saved.index && saved.whatsapp) checkRejected(); }, []);
 
   async function loadOptions() {
     setLoading(true);
@@ -149,7 +171,7 @@ function App() {
           <h2 className="text-xl font-semibold">Request received</h2>
           <p className="text-sm text-muted-foreground">{message}</p>
           <Button type="button" variant="outline" className="h-11 w-full" onClick={() => setMessage('')}>Enroll another month or student</Button>
-        </div> : <form key={formKey} onSubmit={submit} aria-busy={busy}>
+        </div> : <form key={formKey} ref={formRef} onSubmit={submit} onBlur={checkRejected} aria-busy={busy}>
           <fieldset disabled={loading || busy || !options} className="space-y-5 border-0 p-0">
             <legend className="mb-1 text-lg font-semibold">Student details</legend>
             <p className="-mt-2 text-xs text-muted-foreground"><span aria-hidden className="text-destructive">*</span> All fields are required.</p>
@@ -209,6 +231,25 @@ function App() {
         </p>
       </SpotlightCard>
     </main>
+    <AlertDialog open={rejected.length > 0} onOpenChange={open => { if (!open) setRejected([]); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader className="items-center sm:items-start">
+          <XCircle className="size-10 text-destructive" />
+          <AlertDialogTitle>Your enrollment card was not accepted</AlertDialogTitle>
+          <AlertDialogDescription asChild>
+            <div className="space-y-3">
+              {rejected.map(item => <div key={item.month} className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-left text-popover-foreground">
+                <p className="font-semibold">{monthLabel(item.month)}</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm">{item.reason || 'Staff did not give a reason. Please check your card and details.'}</p>
+              </div>)}
+              <p>Please upload the correct card photo below and submit again for the same month.</p>
+              <p lang="si">ඔබගේ කාඩ්පත පිළිගනු නොලැබීය. කරුණාකර නිවැරදි කාඩ්පතේ ඡායාරූපය නැවත උඩුගත කර එම මාසයටම යළි ඉදිරිපත් කරන්න.</p>
+            </div>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter><AlertDialogAction className="h-11 sm:h-9">Upload again</AlertDialogAction></AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </div>;
 }
 

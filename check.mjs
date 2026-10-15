@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import { GET, POST } from './api/enrollment.js';
 import { allowedMonths } from './src/months.js';
 import { normalizeWhatsapp } from './src/whatsapp.js';
-import { cardParts, sendEnrollment, MAX_SIZE, PART_SIZE } from './src/upload.js';
+import { api, cardParts, sendEnrollment, MAX_SIZE, PART_SIZE } from './src/upload.js';
 await import('./apps-script/check.cjs');
 
 const rows = [['Submitted at', 'Student name', 'Student index', 'Batch', 'Physical center', 'Enrollment month', 'LMS card status', 'Uploaded image']];
@@ -106,6 +106,22 @@ try {
   assert.equal(rows[1][11], '=HYPERLINK("https://wa.me/94771234567?text=Hi%20%3DFormula%20student","0771234567")');
   await assert.rejects(sendEnrollment(details, jpeg(100), () => {}), /already exists/);
   assert.equal(files.size, 1);
+  // Rejected card: the form's lookup returns staff's reason, then the student can resubmit into the same row.
+  const status = { action: 'status', index: '250001', whatsapp: '077 123 4567' };
+  assert.deepEqual((await api(status)).rejected, []);
+  const [link, reason] = [rows[1][11], rows[1][12]];
+  Object.assign(rows[1], { 6: 'Rejected', 11: '0771234567', 12: 'Wrong slip' }); // as the sheet displays them
+  assert.deepEqual((await api(status)).rejected, [{ month: month0, reason: 'Wrong slip' }]);
+  assert.deepEqual((await api({ ...status, whatsapp: '0779999999' })).rejected, []);
+  await assert.rejects(api({ ...status, index: '12' }), /valid student index/);
+  await sendEnrollment({ ...details, name: 'Fixed student' }, jpeg(100), () => {});
+  assert.equal(rows.length, 2);
+  assert.equal(rows[1][1], 'Fixed student');
+  assert.equal(rows[1][6], 'Pending');
+  assert.equal(rows[1][12], '');
+  assert.deepEqual((await api(status)).rejected, []);
+  Object.assign(rows[1], { 1: "'=Formula student", 11: link, 12: reason });
+  assert.equal(files.size, 2);
   const large = await sendEnrollment({ ...details, index: '250002' }, jpeg(MAX_SIZE), () => {});
   assert.match(large.message, /saved/);
   assert.equal(rows.length, 3);

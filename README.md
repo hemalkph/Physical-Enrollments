@@ -208,3 +208,11 @@ Follow the CLI prompts to link to your Vercel project. Local API submissions use
 Photos larger than 2.5 MiB use two requests because Vercel caps request bodies at 4.5 MB and base64 increases size. The final photo is assembled and validated in Apps Script; its original contents are saved in Drive. The cache session holds only temporary metadata, not the photo.
 
 Official references: [Vercel Node.js API functions](https://vercel.com/docs/functions/runtimes/node-js), [Vercel request limits](https://vercel.com/docs/functions/limitations), [Apps Script JSON content service and redirects](https://developers.google.com/apps-script/guides/content).
+
+**Wrong slip or details?**
+1. In **Enrollments**, set the row's status to **Rejected** (or **Needs correction**).
+2. Type the reason in column **M (Reject reason)**. The student reads it word for word, so write it for them.
+3. Click **Send rejection** in column **N**. WhatsApp opens with the message and reason ready to send; press send.
+4. When the student next enters their index and WhatsApp number in the form, a popup shows the reason. They upload the correct card for the same month; it replaces the old one in the same row, the status returns to **Pending**, and column M is cleared. Staff notes stay.
+
+Columns M and N must be empty (or already named *Reject reason* / *Send rejection*). Rows in any other status still block a second request.

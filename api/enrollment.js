@@ -52,6 +52,11 @@ export async function POST(request) {
   } catch {
     return reply({ error: 'Invalid form data.' }, 400);
   }
+  if (body?.action === 'status') { // "was my card rejected, and why?" - no photo involved
+    const whatsapp = typeof body.whatsapp === 'string' && normalizeWhatsapp(body.whatsapp);
+    if (typeof body.index !== 'string' || !/^\d{6}$/.test(body.index) || !whatsapp) return reply({ error: 'Enter a valid student index and WhatsApp number.' }, 400);
+    return forward({ action: 'status', index: body.index, whatsapp });
+  }
   if (!body || !['upload-start', 'submit'].includes(body.action)) return reply({ error: 'Invalid action.' }, 400);
   const input = {};
   for (const [key, maximum] of Object.entries({ name: 120, index: 50, whatsapp: 30, batch: 100, center: 100, month: 7 })) {

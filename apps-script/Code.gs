@@ -88,9 +88,11 @@ function onEdit(e) {
   sheet.getRange(first, 9, stamps.length, 1).setValues(stamps);
 }
 
+const DEFAULT_SITE_ = 'https://student-enrollment-livid.vercel.app';
+
 function doGet(e) {
   const embedded = !!(e && e.parameter && e.parameter.embed === '1');
-  const origin = embedded ? (PropertiesService.getScriptProperties().getProperty('VERCEL_ORIGIN') || 'https://student-enrollment-livid.vercel.app') : '';
+  const origin = embedded ? (PropertiesService.getScriptProperties().getProperty('VERCEL_ORIGIN') || DEFAULT_SITE_) : '';
   if (embedded && (!origin || !/^https:\/\/[a-z0-9.-]+(?::\d+)?$/i.test(origin))) {
     throw new Error('Staff must configure VERCEL_ORIGIN in Apps Script project settings first.');
   }
@@ -206,7 +208,9 @@ function submitEnrollment(input) {
     const last = sheet.getLastRow();
     const rows = last < 2 ? [] :
       sheet.getRange(2, 2, last - 1, 6).getDisplayValues(); // name, index, batch, center, month, status
-    if (rows.some(row => row[1].trim().toUpperCase() === data.index && row[4] === data.month)) {
+    const existing = rows.findIndex(row => row[1].trim().toUpperCase() === data.index && row[4] === data.month);
+    // Staff sent this request back (wrong slip/details): the student may resubmit, reusing the same row.
+    if (existing >= 0 && !['Needs correction', 'Rejected'].includes(rows[existing][5])) {
       throw new Error('A request already exists for this student index and month. Contact staff for changes.');
     }
     // An index is "verified" once staff marked any earlier request Completed/Activated.
@@ -214,11 +218,14 @@ function submitEnrollment(input) {
     const plain = value => value.toLowerCase().replace(/\s+/g, ' ').trim();
     const studentStatus = !verified.length ? 'New student (not verified yet)'
       : verified.some(row => plain(row[0]) === plain(data.name)) ? 'Verified student' : 'Verified student - name differs';
-    const header = sheet.getRange(1, 1, 1, 12).getDisplayValues()[0]; // one read for the H, K and L checks
+    const header = sheet.getRange(1, 1, 1, 14).getDisplayValues()[0]; // one read for the H, K, L, M and N checks
     if (header[7] !== 'Uploaded image') {
       throw new Error('Staff must run the updated setup before accepting requests.');
     }
     if (header[11] && header[11] !== 'WhatsApp') throw new Error('Staff must keep column L empty for WhatsApp numbers.');
+    if ((header[12] && header[12] !== 'Reject reason') || (header[13] && header[13] !== 'Send rejection')) {
+      throw new Error('Staff must keep columns M and N empty for the rejection reason and message link.');
+    }
     let imageUrl = '';
     if (image) {
       const folderId = PropertiesService.getScriptProperties().getProperty('UPLOAD_FOLDER_ID');
@@ -227,7 +234,7 @@ function submitEnrollment(input) {
       const file = DriveApp.getFolderById(folderId).createFile(image.blob.setName(filename));
       imageUrl = file.getUrl();
     }
-    const next = last + 1;
+    const next = existing >= 0 ? existing + 2 : last + 1;
     sheet.getRange(next, 2, 1, 5).setNumberFormat('@');
     sheet.getRange(next, 1, 1, 8).setValues([[
       new Date(), cell_(data.name), data.index, cell_(data.batch), cell_(data.center), data.month, 'Pending', imageUrl
@@ -240,11 +247,37 @@ function submitEnrollment(input) {
     if (!header[11] || (!header[10] && statusUsable)) sheet.getRange(1, 11, 1, 2).setValues([[header[10] || 'Student status', 'WhatsApp']]);
     if (statusUsable) sheet.getRange(next, 11, 1, 2).setValues([[studentStatus, link]]);
     else sheet.getRange(next, 12, 1, 1).setValues([[link]]);
+    // M: reason staff type when rejecting (cleared on resubmission). N: click to WhatsApp the student that reason.
+    sheet.getRange(1, 13, 1, 2).setValues([['Reject reason', 'Send rejection']]);
+    sheet.getRange(next, 13, 1, 2).setValues([['', rejectLink_(next, data.whatsapp)]]);
     SpreadsheetApp.flush();
     return { message: 'Your enrollment request was saved for ' + data.month + '. Staff will review it and activate your LMS card.' };
   } finally {
     lock.releaseLock();
   }
+}
+
+// Shows only when the row is Rejected/Needs correction. Row cells (not pasted text) feed the message, so odd names can't break the formula.
+function rejectLink_(row, whatsapp) {
+  const site = (PropertiesService.getScriptProperties().getProperty('VERCEL_ORIGIN') || DEFAULT_SITE_).replace(/"/g, '""');
+  const status = 'G' + row;
+  const message = '"Hi "&B' + row + '&", your enrollment card for "&F' + row + '&" was not accepted. Reason: "&IF(M' + row + '="","please check your card and details",M' + row + ')&". Please upload the correct card again: ' + site + '"';
+  return '=IF(OR(' + status + '="Rejected",' + status + '="Needs correction"),HYPERLINK("https://wa.me/' + whatsapp + '?text="&ENCODEURL(' + message + '),"Send rejection"),"")';
+}
+
+// Lets the form tell a student why staff rejected their card. Needs the index AND the WhatsApp number on the request,
+// so a guessed index alone reveals nothing. Returns only the rejection reason staff typed in column M.
+function rejectedRequests(input) {
+  const index = text_(input && input.index, 'Student index', 50).toUpperCase();
+  const whatsapp = text_(input.whatsapp, 'WhatsApp number', 11);
+  if (!/^\d{6}$/.test(index) || !/^947\d{8}$/.test(whatsapp)) throw new Error('Enter a valid student index and WhatsApp number.');
+  const sheet = book_().getSheetByName('Enrollments');
+  const last = sheet ? sheet.getLastRow() : 0;
+  if (last < 2) return { rejected: [] };
+  const display = '0' + whatsapp.slice(2); // column L shows the number as 07XXXXXXXX
+  return { rejected: sheet.getRange(2, 2, last - 1, 12).getDisplayValues() // B..M
+    .filter(row => row[1].trim().toUpperCase() === index && row[10] === display && ['Needs correction', 'Rejected'].includes(row[5]))
+    .map(row => ({ month: row[4], reason: row[11].trim() })) };
 }
 
 // Run ONCE in the editor. Creates a live "Verified Students" tab listing every index that staff
